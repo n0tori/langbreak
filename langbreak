@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 #
-# Language Breakdown 
+# Language Breakdown
 # Displays a colored percentage bar showing programming language breakdown
 # in the current directory, similar to GitHub/GitLab's linguist feature.
 #
-# Author: n0tori 
+# Author: n0tori
 # Date: January 08, 2026
 # License: GPLv3
+#
+# Usage: ./langbreak [--json|--yaml]
 
 # Color constants (ANSI 256-color codes)
 readonly COLOR_RESET='\033[0m'
 declare -A LANGUAGE_COLORS
 declare -A LANGUAGE_BYTES
+declare -A LANGUAGE_FILES
 declare -A EXTENSION_MAP
 
 #######################################
@@ -130,8 +133,7 @@ initialize_extension_map() {
 #######################################
 detect_language_from_shebang() {
   local file="$1"
-  local first_line
-  first_line=$(head -n 1 "${file}" 2>/dev/null || echo "")
+  local first_line=$(head -n 1 "${file}" 2>/dev/null || echo "")
 
   if [[ "${first_line}" =~ ^#! ]]; then
     if [[ "${first_line}" =~ bash ]]; then
@@ -157,10 +159,8 @@ detect_language_from_shebang() {
 #######################################
 detect_language() {
   local file="$1"
-  local filename
+  local filename=$(basename "${file}")
   local extension
-
-  filename=$(basename "${file}")
 
   if [[ "${filename}" == *.* ]]; then
     extension="${filename##*.}"
@@ -175,9 +175,10 @@ detect_language() {
 }
 
 #######################################
-# Count bytes for all files by language
+# Count bytes and files for all files by language
 # Globals:
 #   LANGUAGE_BYTES
+#   LANGUAGE_FILES
 # Arguments:
 #   None
 #######################################
@@ -193,6 +194,7 @@ count_language_bytes() {
     if [[ -n "${language}" ]]; then
       bytes=$(wc -c < "${file}" 2>/dev/null || echo "0")
       LANGUAGE_BYTES["${language}"]=$((${LANGUAGE_BYTES[${language}]:-0} + bytes))
+      LANGUAGE_FILES["${language}"]=$((${LANGUAGE_FILES[${language}]:-0} + 1))
     fi
   done < <(find . -type f \
     ! -path '*/\.*' \
@@ -207,6 +209,110 @@ count_language_bytes() {
 }
 
 #######################################
+# Export language breakdown as JSON
+# Globals:
+#   LANGUAGE_BYTES
+#   LANGUAGE_FILES
+# Arguments:
+#   None
+#######################################
+export_json() {
+  local total_bytes=0
+  local language
+  local sorted_languages
+  local timestamp=$(date -Iseconds)
+  local first=true
+
+  for language in "${!LANGUAGE_BYTES[@]}"; do
+    total_bytes=$((total_bytes + LANGUAGE_BYTES[${language}]))
+  done
+
+  if [[ ${total_bytes} -eq 0 ]]; then
+    echo '{"timestamp":"'${timestamp}'","total_bytes":0,"languages":[]}'
+    return 0
+  fi
+
+  # Sort languages by byte count (descending)
+  sorted_languages=$(for lang in "${!LANGUAGE_BYTES[@]}"; do
+    echo "${LANGUAGE_BYTES[${lang}]} ${lang}"
+  done | sort -rn | awk '{$1=""; print substr($0,2)}')
+
+  echo "{"
+  echo "  \"timestamp\": \"${timestamp}\","
+  echo "  \"total_bytes\": ${total_bytes},"
+  echo "  \"languages\": ["
+
+  for language in ${sorted_languages}; do
+    local bytes="${LANGUAGE_BYTES[${language}]}"
+    local files="${LANGUAGE_FILES[${language}]}"
+    local percentage=$(awk "BEGIN {printf \"%.1f\", ${bytes} * 100.0 / ${total_bytes}}")
+
+    if [[ "${first}" == "true" ]]; then
+      first=false
+    else
+      echo ","
+    fi
+
+    echo -n "    {"
+    echo -n "\"name\": \"${language}\", "
+    echo -n "\"bytes\": ${bytes}, "
+    echo -n "\"files\": ${files}, "
+    echo -n "\"percentage\": ${percentage}"
+    echo -n "}"
+  done
+
+  echo ""
+  echo "  ]"
+  echo "}"
+}
+
+#######################################
+# Export language breakdown as YAML
+# Globals:
+#   LANGUAGE_BYTES
+#   LANGUAGE_FILES
+# Arguments:
+#   None
+#######################################
+export_yaml() {
+  local total_bytes=0
+  local language
+  local sorted_languages
+  local timestamp=$(date -Iseconds)
+
+  for language in "${!LANGUAGE_BYTES[@]}"; do
+    total_bytes=$((total_bytes + LANGUAGE_BYTES[${language}]))
+  done
+
+  if [[ ${total_bytes} -eq 0 ]]; then
+    echo "timestamp: \"${timestamp}\""
+    echo "total_bytes: 0"
+    echo "languages: []"
+    return 0
+  fi
+
+  # Sort languages by byte count (descending)
+  sorted_languages=$(for lang in "${!LANGUAGE_BYTES[@]}"; do
+    echo "${LANGUAGE_BYTES[${lang}]} ${lang}"
+  done | sort -rn | awk '{$1=""; print substr($0,2)}')
+
+  echo "timestamp: \"${timestamp}\""
+  echo "total_bytes: ${total_bytes}"
+  echo "languages:"
+
+  for language in ${sorted_languages}; do
+    local bytes="${LANGUAGE_BYTES[${language}]}"
+    local files="${LANGUAGE_FILES[${language}]}"
+    local percentage=$(awk "BEGIN {printf \"%.1f\", ${bytes} * 100.0 / ${total_bytes}}")
+
+    echo "  - name: \"${language}\""
+    echo "    bytes: ${bytes}"
+    echo "    files: ${files}"
+    echo "    percentage: ${percentage}"
+  done
+}
+
+#######################################
 # Render the language breakdown bar and legend
 # Globals:
 #   LANGUAGE_BYTES
@@ -217,7 +323,6 @@ count_language_bytes() {
 #######################################
 render_output() {
   local total_bytes=0
-  local terminal_width
   local language
   local sorted_languages
 
@@ -230,7 +335,7 @@ render_output() {
     return 0
   fi
 
-  terminal_width=$(tput cols 2>/dev/null || echo "80")
+  local terminal_width=$(tput cols 2>/dev/null || echo "80")
 
   # Sort languages by byte count (descending)
   sorted_languages=$(for lang in "${!LANGUAGE_BYTES[@]}"; do
@@ -264,13 +369,55 @@ render_output() {
 #######################################
 # Main function
 # Arguments:
-#   None
+#   Command-line arguments (--json, --yaml, --help)
 #######################################
 main() {
+  local export_format=""
+
+  case "${1:-}" in
+    --json)
+      export_format="json"
+      ;;
+    --yaml)
+      export_format="yaml"
+      ;;
+    --help)
+      echo "Usage: ./langbreak [--json|--yaml]"
+      echo ""
+      echo "Display programming language breakdown for the current directory."
+      echo ""
+      echo "Options:"
+      echo "  --json    Export as JSON to stdout"
+      echo "  --yaml    Export as YAML to stdout"
+      echo "  --help    Show this help message"
+      echo ""
+      echo "Without options, displays a coloured bar visualisation."
+      exit 0
+      ;;
+    "")
+      ;;
+    *)
+      echo "Error: Unknown option '${1}'" >&2
+      echo "Usage: ./langbreak [--json|--yaml]" >&2
+      exit 1
+      ;;
+  esac
+
   initialize_color_map
   initialize_extension_map
   count_language_bytes
-  render_output
+
+  case "${export_format}" in
+    json)
+      export_json
+      ;;
+    yaml)
+      export_yaml
+      ;;
+    *)
+      render_output
+      ;;
+  esac
 }
 
 main "$@"
