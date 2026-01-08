@@ -12,6 +12,7 @@
 #        ./langbreak --json
 #        ./langbreak --max-depth 2
 #        ./langbreak --width 50
+#        ./langbreak --compact
 
 # Color constants (ANSI 256-color codes)
 readonly COLOR_RESET='\033[0m'
@@ -21,6 +22,7 @@ declare -A LANGUAGE_FILES
 declare -A EXTENSION_MAP
 MAX_DEPTH=""
 BAR_WIDTH=""
+COMPACT_MODE=false
 
 #######################################
 # Initialize language-to-color mapping (GitHub linguist colors)
@@ -332,6 +334,7 @@ export_yaml() {
 #   LANGUAGE_COLORS
 #   COLOR_RESET
 #   BAR_WIDTH
+#   COMPACT_MODE
 # Arguments:
 #   None
 #######################################
@@ -375,14 +378,28 @@ render_output() {
   done
   echo ""
 
-  # Render the legend
-  for language in ${sorted_languages}; do
-    local bytes="${LANGUAGE_BYTES[${language}]}"
-    local percentage=$(awk "BEGIN {printf \"%.1f\", ${bytes} * 100.0 / ${total_bytes}}")
-    local color="${LANGUAGE_COLORS[${language}]:-7}"
+  if [[ "${COMPACT_MODE}" == "true" ]]; then
+    # Compact mode: just print language names separated by commas
+    local first=true
+    for language in ${sorted_languages}; do
+      if [[ "${first}" == "true" ]]; then
+        echo -n "${language}"
+        first=false
+      else
+        echo -n ", ${language}"
+      fi
+    done
+    echo ""
+  else
+    # Normal mode: print detailed legend
+    for language in ${sorted_languages}; do
+      local bytes="${LANGUAGE_BYTES[${language}]}"
+      local percentage=$(awk "BEGIN {printf \"%.1f\", ${bytes} * 100.0 / ${total_bytes}}")
+      local color="${LANGUAGE_COLORS[${language}]:-7}"
 
-    printf "\033[38;5;%sm■\033[0m %-15s %6s%%\n" "${color}" "${language}" "${percentage}"
-  done
+      printf "\033[38;5;%sm■\033[0m %-15s %6s%%\n" "${color}" "${language}" "${percentage}"
+    done
+  fi
 }
 
 #######################################
@@ -427,6 +444,10 @@ main() {
         BAR_WIDTH="$2"
         shift 2
         ;;
+      --compact)
+        COMPACT_MODE=true
+        shift
+        ;;
       --help)
         echo "Usage: ./langbreak [OPTIONS]"
         echo ""
@@ -435,6 +456,7 @@ main() {
         echo "Options:"
         echo "  --json              Export as JSON to stdout"
         echo "  --yaml              Export as YAML to stdout"
+        echo "  --compact           Compact output (bar + language names on one line)"
         echo "  --max-depth <N>     Limit directory traversal to N levels deep"
         echo "  --width <N>         Override bar width to N characters (default: terminal width)"
         echo "  --help              Show this help message"

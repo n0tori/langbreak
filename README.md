@@ -41,6 +41,11 @@ Custom bar width:
 ./langbreak --width 50
 ```
 
+Compact output:
+```bash
+./langbreak --compact
+```
+
 Redirect to a file:
 ```bash
 ./langbreak --json > stats.json
