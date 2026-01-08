@@ -11,6 +11,7 @@
 # Usage: ./langbreak [OPTIONS]
 #        ./langbreak --json
 #        ./langbreak --max-depth 2
+#        ./langbreak --width 50
 
 # Color constants (ANSI 256-color codes)
 readonly COLOR_RESET='\033[0m'
@@ -19,6 +20,7 @@ declare -A LANGUAGE_BYTES
 declare -A LANGUAGE_FILES
 declare -A EXTENSION_MAP
 MAX_DEPTH=""
+BAR_WIDTH=""
 
 #######################################
 # Initialize language-to-color mapping (GitHub linguist colors)
@@ -329,6 +331,7 @@ export_yaml() {
 #   LANGUAGE_BYTES
 #   LANGUAGE_COLORS
 #   COLOR_RESET
+#   BAR_WIDTH
 # Arguments:
 #   None
 #######################################
@@ -346,7 +349,12 @@ render_output() {
     return 0
   fi
 
-  local terminal_width=$(tput cols 2>/dev/null || echo "80")
+  local terminal_width
+  if [[ -n "${BAR_WIDTH}" ]]; then
+    terminal_width="${BAR_WIDTH}"
+  else
+    terminal_width=$(tput cols 2>/dev/null || echo "80")
+  fi
 
   # Sort languages by byte count (descending)
   sorted_languages=$(for lang in "${!LANGUAGE_BYTES[@]}"; do
@@ -407,6 +415,18 @@ main() {
         MAX_DEPTH="$2"
         shift 2
         ;;
+      --width)
+        if [[ -z "${2:-}" || "${2}" =~ ^- ]]; then
+          echo "Error: --width requires a numeric value" >&2
+          exit 1
+        fi
+        if ! [[ "${2}" =~ ^[0-9]+$ ]]; then
+          echo "Error: --width value must be a positive integer" >&2
+          exit 1
+        fi
+        BAR_WIDTH="$2"
+        shift 2
+        ;;
       --help)
         echo "Usage: ./langbreak [OPTIONS]"
         echo ""
@@ -416,6 +436,7 @@ main() {
         echo "  --json              Export as JSON to stdout"
         echo "  --yaml              Export as YAML to stdout"
         echo "  --max-depth <N>     Limit directory traversal to N levels deep"
+        echo "  --width <N>         Override bar width to N characters (default: terminal width)"
         echo "  --help              Show this help message"
         echo ""
         echo "Without options, displays a coloured bar visualisation."

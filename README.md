@@ -36,6 +36,11 @@ Limit directory depth:
 ./langbreak --max-depth 2
 ```
 
+Custom bar width:
+```bash
+./langbreak --width 50
+```
+
 Redirect to a file:
 ```bash
 ./langbreak --json > stats.json
