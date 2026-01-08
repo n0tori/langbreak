@@ -31,6 +31,11 @@ Export language data to JSON or YAML:
 ./langbreak --yaml
 ```
 
+Limit directory depth:
+```bash
+./langbreak --max-depth 2
+```
+
 Redirect to a file:
 ```bash
 ./langbreak --json > stats.json

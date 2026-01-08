@@ -8,7 +8,9 @@
 # Date: January 08, 2026
 # License: GPLv3
 #
-# Usage: ./langbreak [--json|--yaml]
+# Usage: ./langbreak [OPTIONS]
+#        ./langbreak --json
+#        ./langbreak --max-depth 2
 
 # Color constants (ANSI 256-color codes)
 readonly COLOR_RESET='\033[0m'
@@ -16,6 +18,7 @@ declare -A LANGUAGE_COLORS
 declare -A LANGUAGE_BYTES
 declare -A LANGUAGE_FILES
 declare -A EXTENSION_MAP
+MAX_DEPTH=""
 
 #######################################
 # Initialize language-to-color mapping (GitHub linguist colors)
@@ -179,6 +182,7 @@ detect_language() {
 # Globals:
 #   LANGUAGE_BYTES
 #   LANGUAGE_FILES
+#   MAX_DEPTH
 # Arguments:
 #   None
 #######################################
@@ -186,6 +190,22 @@ count_language_bytes() {
   local file
   local language
   local bytes
+  local find_cmd="find ."
+
+  if [[ -n "${MAX_DEPTH}" ]]; then
+    find_cmd="${find_cmd} -maxdepth ${MAX_DEPTH}"
+  fi
+
+  find_cmd="${find_cmd} -type f \
+    ! -path '*/\.*' \
+    ! -path '*/node_modules/*' \
+    ! -path '*/vendor/*' \
+    ! -path '*/venv/*' \
+    ! -path '*/__pycache__/*' \
+    ! -path '*/dist/*' \
+    ! -path '*/build/*' \
+    ! -path '*/out/*' \
+    ! -path '*/target/*'"
 
   # Find files with exclusions
   while IFS= read -r file; do
@@ -196,16 +216,7 @@ count_language_bytes() {
       LANGUAGE_BYTES["${language}"]=$((${LANGUAGE_BYTES[${language}]:-0} + bytes))
       LANGUAGE_FILES["${language}"]=$((${LANGUAGE_FILES[${language}]:-0} + 1))
     fi
-  done < <(find . -type f \
-    ! -path '*/\.*' \
-    ! -path '*/node_modules/*' \
-    ! -path '*/vendor/*' \
-    ! -path '*/venv/*' \
-    ! -path '*/__pycache__/*' \
-    ! -path '*/dist/*' \
-    ! -path '*/build/*' \
-    ! -path '*/out/*' \
-    ! -path '*/target/*')
+  done < <(eval "${find_cmd}")
 }
 
 #######################################
@@ -369,39 +380,58 @@ render_output() {
 #######################################
 # Main function
 # Arguments:
-#   Command-line arguments (--json, --yaml, --help)
+#   Command-line arguments (--json, --yaml, --help, --max-depth)
 #######################################
 main() {
   local export_format=""
 
-  case "${1:-}" in
-    --json)
-      export_format="json"
-      ;;
-    --yaml)
-      export_format="yaml"
-      ;;
-    --help)
-      echo "Usage: ./langbreak [--json|--yaml]"
-      echo ""
-      echo "Display programming language breakdown for the current directory."
-      echo ""
-      echo "Options:"
-      echo "  --json    Export as JSON to stdout"
-      echo "  --yaml    Export as YAML to stdout"
-      echo "  --help    Show this help message"
-      echo ""
-      echo "Without options, displays a coloured bar visualisation."
-      exit 0
-      ;;
-    "")
-      ;;
-    *)
-      echo "Error: Unknown option '${1}'" >&2
-      echo "Usage: ./langbreak [--json|--yaml]" >&2
-      exit 1
-      ;;
-  esac
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)
+        export_format="json"
+        shift
+        ;;
+      --yaml)
+        export_format="yaml"
+        shift
+        ;;
+      --max-depth)
+        if [[ -z "${2:-}" || "${2}" =~ ^- ]]; then
+          echo "Error: --max-depth requires a numeric value" >&2
+          exit 1
+        fi
+        if ! [[ "${2}" =~ ^[0-9]+$ ]]; then
+          echo "Error: --max-depth value must be a positive integer" >&2
+          exit 1
+        fi
+        MAX_DEPTH="$2"
+        shift 2
+        ;;
+      --help)
+        echo "Usage: ./langbreak [OPTIONS]"
+        echo ""
+        echo "Display programming language breakdown for the current directory."
+        echo ""
+        echo "Options:"
+        echo "  --json              Export as JSON to stdout"
+        echo "  --yaml              Export as YAML to stdout"
+        echo "  --max-depth <N>     Limit directory traversal to N levels deep"
+        echo "  --help              Show this help message"
+        echo ""
+        echo "Without options, displays a coloured bar visualisation."
+        exit 0
+        ;;
+      "")
+        shift
+        ;;
+      *)
+        echo "Error: Unknown option '${1}'" >&2
+        echo "Usage: ./langbreak [OPTIONS]" >&2
+        echo "Try './langbreak --help' for more information." >&2
+        exit 1
+        ;;
+    esac
+  done
 
   initialize_color_map
   initialize_extension_map
