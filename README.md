@@ -46,6 +46,11 @@ Compact output:
 ./langbreak --compact
 ```
 
+Verbose statistics:
+```bash
+./langbreak --verbose
+```
+
 Redirect to a file:
 ```bash
 ./langbreak --json > stats.json

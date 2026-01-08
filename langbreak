@@ -13,6 +13,7 @@
 #        ./langbreak --max-depth 2
 #        ./langbreak --width 50
 #        ./langbreak --compact
+#        ./langbreak --verbose
 
 # Color constants (ANSI 256-color codes)
 readonly COLOR_RESET='\033[0m'
@@ -23,6 +24,9 @@ declare -A EXTENSION_MAP
 MAX_DEPTH=""
 BAR_WIDTH=""
 COMPACT_MODE=false
+VERBOSE_MODE=false
+TOTAL_FILES_SCANNED=0
+EXCLUDED_FILES=0
 
 #######################################
 # Initialize language-to-color mapping (GitHub linguist colors)
@@ -187,6 +191,8 @@ detect_language() {
 #   LANGUAGE_BYTES
 #   LANGUAGE_FILES
 #   MAX_DEPTH
+#   TOTAL_FILES_SCANNED
+#   EXCLUDED_FILES
 # Arguments:
 #   None
 #######################################
@@ -213,12 +219,15 @@ count_language_bytes() {
 
   # Find files with exclusions
   while IFS= read -r file; do
+    TOTAL_FILES_SCANNED=$((TOTAL_FILES_SCANNED + 1))
     language=$(detect_language "${file}")
 
     if [[ -n "${language}" ]]; then
       bytes=$(wc -c < "${file}" 2>/dev/null || echo "0")
       LANGUAGE_BYTES["${language}"]=$((${LANGUAGE_BYTES[${language}]:-0} + bytes))
       LANGUAGE_FILES["${language}"]=$((${LANGUAGE_FILES[${language}]:-0} + 1))
+    else
+      EXCLUDED_FILES=$((EXCLUDED_FILES + 1))
     fi
   done < <(eval "${find_cmd}")
 }
@@ -403,9 +412,29 @@ render_output() {
 }
 
 #######################################
+# Show verbose statistics
+# Globals:
+#   TOTAL_FILES_SCANNED
+#   EXCLUDED_FILES
+# Arguments:
+#   Scan duration in seconds
+#######################################
+show_verbose_stats() {
+  local duration="$1"
+  local recognized_files=$((TOTAL_FILES_SCANNED - EXCLUDED_FILES))
+
+  echo ""
+  echo "Statistics:"
+  echo "  Total files scanned:    ${TOTAL_FILES_SCANNED}"
+  echo "  Recognized files:       ${recognized_files}"
+  echo "  Unrecognized files:     ${EXCLUDED_FILES}"
+  echo "  Scan duration:          ${duration}s"
+}
+
+#######################################
 # Main function
 # Arguments:
-#   Command-line arguments (--json, --yaml, --help, --max-depth)
+#   Command-line arguments (--json, --yaml, --help, --max-depth, --verbose)
 #######################################
 main() {
   local export_format=""
@@ -448,6 +477,10 @@ main() {
         COMPACT_MODE=true
         shift
         ;;
+      --verbose)
+        VERBOSE_MODE=true
+        shift
+        ;;
       --help)
         echo "Usage: ./langbreak [OPTIONS]"
         echo ""
@@ -459,6 +492,7 @@ main() {
         echo "  --compact           Compact output (bar + language names on one line)"
         echo "  --max-depth <N>     Limit directory traversal to N levels deep"
         echo "  --width <N>         Override bar width to N characters (default: terminal width)"
+        echo "  --verbose           Show additional statistics (files scanned, duration)"
         echo "  --help              Show this help message"
         echo ""
         echo "Without options, displays a coloured bar visualisation."
@@ -478,7 +512,11 @@ main() {
 
   initialize_color_map
   initialize_extension_map
+
+  local start_time=$SECONDS
   count_language_bytes
+  local end_time=$SECONDS
+  local duration=$((end_time - start_time))
 
   case "${export_format}" in
     json)
@@ -489,6 +527,9 @@ main() {
       ;;
     *)
       render_output
+      if [[ "${VERBOSE_MODE}" == "true" ]]; then
+        show_verbose_stats "${duration}"
+      fi
       ;;
   esac
 }
