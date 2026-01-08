@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+#
+# Language Breakdown 
+# Displays a colored percentage bar showing programming language breakdown
+# in the current directory, similar to GitHub/GitLab's linguist feature.
+#
+# Author: n0tori 
+# Date: January 08, 2026
+# License: GPLv3
+
+# Color constants (ANSI 256-color codes)
+readonly COLOR_RESET='\033[0m'
+declare -A LANGUAGE_COLORS
+declare -A LANGUAGE_BYTES
+declare -A EXTENSION_MAP
+
+#######################################
+# Initialize language-to-color mapping (GitHub linguist colors)
+# Globals:
+#   LANGUAGE_COLORS
+# Arguments:
+#   None
+#######################################
+initialize_color_map() {
+  # Map language names to ANSI 256-color codes
+  LANGUAGE_COLORS["JavaScript"]="226"
+  LANGUAGE_COLORS["Python"]="33"
+  LANGUAGE_COLORS["TypeScript"]="69"
+  LANGUAGE_COLORS["Shell"]="34"
+  LANGUAGE_COLORS["Go"]="80"
+  LANGUAGE_COLORS["Java"]="208"
+  LANGUAGE_COLORS["Ruby"]="160"
+  LANGUAGE_COLORS["C"]="244"
+  LANGUAGE_COLORS["C++"]="205"
+  LANGUAGE_COLORS["Rust"]="166"
+  LANGUAGE_COLORS["PHP"]="62"
+  LANGUAGE_COLORS["HTML"]="196"
+  LANGUAGE_COLORS["CSS"]="92"
+  LANGUAGE_COLORS["C#"]="28"
+  LANGUAGE_COLORS["Kotlin"]="167"
+  LANGUAGE_COLORS["Scala"]="196"
+  LANGUAGE_COLORS["Swift"]="214"
+  LANGUAGE_COLORS["Objective-C"]="69"
+  LANGUAGE_COLORS["Perl"]="27"
+  LANGUAGE_COLORS["Lua"]="27"
+  LANGUAGE_COLORS["R"]="27"
+  LANGUAGE_COLORS["Haskell"]="99"
+  LANGUAGE_COLORS["Elixir"]="93"
+  LANGUAGE_COLORS["Erlang"]="160"
+  LANGUAGE_COLORS["Clojure"]="28"
+  LANGUAGE_COLORS["YAML"]="250"
+  LANGUAGE_COLORS["JSON"]="227"
+  LANGUAGE_COLORS["TOML"]="172"
+  LANGUAGE_COLORS["XML"]="172"
+  LANGUAGE_COLORS["SQL"]="250"
+  LANGUAGE_COLORS["PowerShell"]="27"
+  LANGUAGE_COLORS["Vim Script"]="28"
+  LANGUAGE_COLORS["Markdown"]="248"
+}
+
+#######################################
+# Initialize file extension to language mapping
+# Globals:
+#   EXTENSION_MAP
+# Arguments:
+#   None
+#######################################
+initialize_extension_map() {
+  # Map file extensions to language names
+  EXTENSION_MAP["js"]="JavaScript"
+  EXTENSION_MAP["jsx"]="JavaScript"
+  EXTENSION_MAP["mjs"]="JavaScript"
+  EXTENSION_MAP["py"]="Python"
+  EXTENSION_MAP["ts"]="TypeScript"
+  EXTENSION_MAP["tsx"]="TypeScript"
+  EXTENSION_MAP["sh"]="Shell"
+  EXTENSION_MAP["bash"]="Shell"
+  EXTENSION_MAP["go"]="Go"
+  EXTENSION_MAP["java"]="Java"
+  EXTENSION_MAP["rb"]="Ruby"
+  EXTENSION_MAP["c"]="C"
+  EXTENSION_MAP["h"]="C"
+  EXTENSION_MAP["cpp"]="C++"
+  EXTENSION_MAP["hpp"]="C++"
+  EXTENSION_MAP["cc"]="C++"
+  EXTENSION_MAP["cxx"]="C++"
+  EXTENSION_MAP["rs"]="Rust"
+  EXTENSION_MAP["php"]="PHP"
+  EXTENSION_MAP["html"]="HTML"
+  EXTENSION_MAP["htm"]="HTML"
+  EXTENSION_MAP["css"]="CSS"
+  EXTENSION_MAP["cs"]="C#"
+  EXTENSION_MAP["kt"]="Kotlin"
+  EXTENSION_MAP["kts"]="Kotlin"
+  EXTENSION_MAP["scala"]="Scala"
+  EXTENSION_MAP["swift"]="Swift"
+  EXTENSION_MAP["m"]="Objective-C"
+  EXTENSION_MAP["mm"]="Objective-C"
+  EXTENSION_MAP["pl"]="Perl"
+  EXTENSION_MAP["pm"]="Perl"
+  EXTENSION_MAP["lua"]="Lua"
+  EXTENSION_MAP["r"]="R"
+  EXTENSION_MAP["R"]="R"
+  EXTENSION_MAP["hs"]="Haskell"
+  EXTENSION_MAP["ex"]="Elixir"
+  EXTENSION_MAP["exs"]="Elixir"
+  EXTENSION_MAP["erl"]="Erlang"
+  EXTENSION_MAP["hrl"]="Erlang"
+  EXTENSION_MAP["clj"]="Clojure"
+  EXTENSION_MAP["cljs"]="Clojure"
+  EXTENSION_MAP["yml"]="YAML"
+  EXTENSION_MAP["yaml"]="YAML"
+  EXTENSION_MAP["json"]="JSON"
+  EXTENSION_MAP["toml"]="TOML"
+  EXTENSION_MAP["xml"]="XML"
+  EXTENSION_MAP["sql"]="SQL"
+  EXTENSION_MAP["ps1"]="PowerShell"
+  EXTENSION_MAP["psm1"]="PowerShell"
+  EXTENSION_MAP["vim"]="Vim Script"
+  EXTENSION_MAP["md"]="Markdown"
+  EXTENSION_MAP["markdown"]="Markdown"
+}
+
+#######################################
+# Detect language from shebang 
+# Arguments:
+#   File path
+# Outputs:
+#   Language name or empty string
+#######################################
+detect_language_from_shebang() {
+  local file="$1"
+  local first_line
+  first_line=$(head -n 1 "${file}" 2>/dev/null || echo "")
+
+  if [[ "${first_line}" =~ ^#! ]]; then
+    if [[ "${first_line}" =~ bash ]]; then
+      echo "Shell"
+    elif [[ "${first_line}" =~ python ]]; then
+      echo "Python"
+    elif [[ "${first_line}" =~ ruby ]]; then
+      echo "Ruby"
+    elif [[ "${first_line}" =~ node ]]; then
+      echo "JavaScript"
+    fi
+  fi
+}
+
+#######################################
+# Detect language from file
+# Globals:
+#   EXTENSION_MAP
+# Arguments:
+#   File path
+# Outputs:
+#   Language name or empty string
+#######################################
+detect_language() {
+  local file="$1"
+  local filename
+  local extension
+
+  filename=$(basename "${file}")
+
+  if [[ "${filename}" == *.* ]]; then
+    extension="${filename##*.}"
+    if [[ -n "${EXTENSION_MAP[${extension}]:-}" ]]; then
+      echo "${EXTENSION_MAP[${extension}]}"
+      return 0
+    fi
+  fi
+
+  # Fall back to shebang for extensionless files
+  detect_language_from_shebang "${file}"
+}
+
+#######################################
+# Count bytes for all files by language
+# Globals:
+#   LANGUAGE_BYTES
+# Arguments:
+#   None
+#######################################
+count_language_bytes() {
+  local file
+  local language
+  local bytes
+
+  # Find files with exclusions
+  while IFS= read -r file; do
+    language=$(detect_language "${file}")
+
+    if [[ -n "${language}" ]]; then
+      bytes=$(wc -c < "${file}" 2>/dev/null || echo "0")
+      LANGUAGE_BYTES["${language}"]=$((${LANGUAGE_BYTES[${language}]:-0} + bytes))
+    fi
+  done < <(find . -type f \
+    ! -path '*/\.*' \
+    ! -path '*/node_modules/*' \
+    ! -path '*/vendor/*' \
+    ! -path '*/venv/*' \
+    ! -path '*/__pycache__/*' \
+    ! -path '*/dist/*' \
+    ! -path '*/build/*' \
+    ! -path '*/out/*' \
+    ! -path '*/target/*')
+}
+
+#######################################
+# Render the language breakdown bar and legend
+# Globals:
+#   LANGUAGE_BYTES
+#   LANGUAGE_COLORS
+#   COLOR_RESET
+# Arguments:
+#   None
+#######################################
+render_output() {
+  local total_bytes=0
+  local terminal_width
+  local language
+  local sorted_languages
+
+  for language in "${!LANGUAGE_BYTES[@]}"; do
+    total_bytes=$((total_bytes + LANGUAGE_BYTES[${language}]))
+  done
+
+  if [[ ${total_bytes} -eq 0 ]]; then
+    echo "No recognized programming language files found."
+    return 0
+  fi
+
+  terminal_width=$(tput cols 2>/dev/null || echo "80")
+
+  # Sort languages by byte count (descending)
+  sorted_languages=$(for lang in "${!LANGUAGE_BYTES[@]}"; do
+    echo "${LANGUAGE_BYTES[${lang}]} ${lang}"
+  done | sort -rn | awk '{print $2}')
+
+  # Render the bar
+  for language in ${sorted_languages}; do
+    local bytes="${LANGUAGE_BYTES[${language}]}"
+    local percentage=$((bytes * 100 / total_bytes))
+    local bar_width=$((bytes * terminal_width / total_bytes))
+    local color="${LANGUAGE_COLORS[${language}]:-7}"
+
+    # Print colored bar segment
+    printf "\033[48;5;%sm" "${color}"
+    printf "%${bar_width}s" "" | tr ' ' '█'
+    printf "${COLOR_RESET}"
+  done
+  echo ""
+
+  # Render the legend
+  for language in ${sorted_languages}; do
+    local bytes="${LANGUAGE_BYTES[${language}]}"
+    local percentage=$(awk "BEGIN {printf \"%.1f\", ${bytes} * 100.0 / ${total_bytes}}")
+    local color="${LANGUAGE_COLORS[${language}]:-7}"
+
+    printf "\033[38;5;%sm■\033[0m %-15s %6s%%\n" "${color}" "${language}" "${percentage}"
+  done
+}
+
+#######################################
+# Main function
+# Arguments:
+#   None
+#######################################
+main() {
+  initialize_color_map
+  initialize_extension_map
+  count_language_bytes
+  render_output
+}
+
+main "$@"
