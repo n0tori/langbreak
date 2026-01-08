@@ -1,5 +1,7 @@
 # langbreak
 
+![Example file](/example.png)
+
 A simple script that displays a coloured language breakdown bar for your codebase, similar to GitHub's linguist feature.
 
 ## Usage
